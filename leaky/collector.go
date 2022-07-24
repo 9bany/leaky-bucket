@@ -17,12 +17,10 @@ type bucketMap map[string]*LeakyBucket
 //
 // All Collector methods are goroutine safe.
 type Collector struct {
-	buckets  bucketMap
-	heap     priorityQueue
-	rate     float64
-	capacity int64
-	lock     sync.Mutex
-	quit     chan bool
+	buckets bucketMap
+	heap    priorityQueue
+	lock    sync.Mutex
+	quit    chan bool
 }
 
 // NewCollector creates a new Collector. When new buckets are created within
@@ -34,13 +32,11 @@ type Collector struct {
 // If deleteEmptyBuckets is true, a concurrent goroutine will be run that
 // watches for bucket's that become empty and automatically removes them,
 // freeing up memory resources.
-func NewCollector(rate float64, capacity int64, deleteEmptyBuckets bool) *Collector {
+func NewCollector(deleteEmptyBuckets bool) *Collector {
 	c := &Collector{
-		buckets:  make(bucketMap),
-		heap:     make(priorityQueue, 0, 4096),
-		rate:     rate,
-		capacity: capacity,
-		quit:     make(chan bool),
+		buckets: make(bucketMap),
+		heap:    make(priorityQueue, 0, 4096),
+		quit:    make(chan bool),
 	}
 
 	if deleteEmptyBuckets {
@@ -67,23 +63,6 @@ func (c *Collector) Reset() {
 	// Let the garbage collector do all the work.
 	c.buckets = make(bucketMap)
 	c.heap = make(priorityQueue, 0, 4096)
-}
-
-// Capacity returns the collector's capacity.
-func (c *Collector) Capacity() int64 {
-	return c.capacity
-}
-
-// Rate returns the collector's rate.
-func (c *Collector) Rate() float64 {
-	return c.rate
-}
-
-// Remaining returns the remaining capacity of the internal bucket associated
-// with key.  If key is not associated with a bucket internally, it is treated
-// as being empty.
-func (c *Collector) Remaining(key string) int64 {
-	return c.capacity - c.Count(key)
 }
 
 // Count returns the count of the internal bucket associated with key. If key
@@ -136,7 +115,7 @@ func (c *Collector) Remove(key string) {
 //
 // If key is not associated with a bucket internally, a new bucket is created
 // and amount is added to it.
-func (c *Collector) Add(key string, amount int64) int64 {
+func (c *Collector) Add(key string, amount, capacity int64, rate float64) int64 {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -146,8 +125,8 @@ func (c *Collector) Add(key string, amount int64) int64 {
 		// Create a new bucket.
 		b = &LeakyBucket{
 			key:      key,
-			capacity: c.capacity,
-			rate:     c.rate,
+			capacity: capacity,
+			rate:     rate,
 			p:        now(),
 		}
 		c.heap.Push(b)
